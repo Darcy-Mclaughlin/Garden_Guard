@@ -26,6 +26,7 @@ Then visit <http://localhost:8000>.
 - Fuse compatible guardians by selecting one and placing it onto an occupied plot. Try Glow Sprig + Thorn Coil, Dew Well + Bark Bastion, and Ember Pod + Breeze Bell.
 - Read enemy armor colors: orange resists blast damage but is weak to slow, purple resists slow but is weak to blasts, and cyan resists pushback but is weak to direct green sparks.
 - The final Moon Surge includes a colossal Orchard Breaker that throws enemies into plots near the moon gate.
+- Each lane has a mower mech as a one-use emergency defense. It clears the first breach in its lane; enemies that get past the mower damage the moon gate.
 - Click glowing dew drops to collect resources, and grab green plant food drops when energized enemies fall.
 - Use **Uproot** and click a placed guardian to remove it.
 - Enter `DEBUG` in the Test code field to unlock the safe testing console. Then use `HELP`, `TEST_ALL`, `FOOD`, `ENERGIZED`, `WAVE 5`, `WIN`, `LOSE`, or `RESET` to exercise systems without changing normal gameplay.

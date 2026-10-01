@@ -23,7 +23,7 @@ const ui = {
   debugStatus: document.getElementById("debugStatus")
 };
 
-const BOARD = { x: 92, y: 105, w: 900, h: 475, rows: 5, cols: 9 };
+const BOARD = { x: 58, y: 105, w: 964, h: 475, rows: 5, cols: 9 };
 const CELL = { w: BOARD.w / BOARD.cols, h: BOARD.h / BOARD.rows };
 const MAX_WAVES = 10;
 const SURGE_WAVES = [3, 6, 9, 10];
@@ -81,6 +81,12 @@ function freshState() {
     removeMode: false,
     cursor: { row: 2, col: 2 },
     guardians: [],
+    mowers: Array.from({ length: BOARD.rows }, (_, row) => ({
+      row,
+      x: BOARD.x - 22,
+      y: cellCenter(row, 0).y,
+      active: true
+    })),
     invaders: [],
     shots: [],
     drops: [],
@@ -430,9 +436,12 @@ function collectDrop(drop) {
 
 function canvasPoint(event) {
   const rect = canvas.getBoundingClientRect();
+  const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+  const offsetX = (rect.width - canvas.width * scale) / 2;
+  const offsetY = (rect.height - canvas.height * scale) / 2;
   return {
-    x: (event.clientX - rect.left) * canvas.width / rect.width,
-    y: (event.clientY - rect.top) * canvas.height / rect.height
+    x: (event.clientX - rect.left - offsetX) / scale,
+    y: (event.clientY - rect.top - offsetY) / scale
   };
 }
 
@@ -645,11 +654,13 @@ function updateGuardians(dt) {
     } else if (unit.type === "breeze" && targets.length && unit.timer <= 0) {
       unit.timer = abilityCooldown;
       unit.pulse = .4;
-      targets.slice(0, 4).forEach(enemy => {
-        const spec = enemies[enemy.type];
-        if (spec.resist !== "push") enemy.x = Math.min(BOARD.x + BOARD.w, enemy.x + (spec.weakness === "push" ? 52 : 34));
-        damageEnemy(enemy, 6, "push");
-        spawnBurst(enemy.x, enemy.y, spec.color, 4);
+      const target = targets[0];
+      state.shots.push({
+        type: "breeze", row: unit.row, x: unit.x + 26, y: unit.y - 8,
+        startX: unit.x + 26, startY: unit.y - 8,
+        targetX: target.x, targetY: target.y,
+        travel: 0, age: 0, speed: 330, effect: "push", damage: 8,
+        splash: 0, color: spec.color, radius: 9
       });
     } else if (unit.type === "coil" && targets.length && unit.timer <= 0) {
       unit.timer = abilityCooldown;
@@ -716,6 +727,9 @@ function updateShots(dt) {
           spawnBurst(ricochet.x, ricochet.y, shot.color, 5);
         }
       }
+      if (shot.type === "breeze" && enemies[hit.type].resist !== "push") {
+        hit.x = Math.min(BOARD.x + BOARD.w, hit.x + (enemies[hit.type].weakness === "push" ? 52 : 34));
+      }
       shot.dead = true;
       spawnBurst(shot.x, shot.y, shot.color, 7);
     }
@@ -727,6 +741,7 @@ function updateShots(dt) {
 function updateInvaders(dt) {
   const thrownEnemies = [];
   for (const enemy of state.invaders) {
+    if (enemy.dead) continue;
     const spec = enemies[enemy.type];
     enemy.step += dt * 6;
     enemy.slow = Math.max(0, enemy.slow - dt);
@@ -789,7 +804,22 @@ function updateInvaders(dt) {
         announce("Energized enemy dropped plant food!");
       }
       spawnBurst(enemy.x, enemy.y, spec.color, 15);
-    } else if (enemy.x < BOARD.x - 36) {
+    } else {
+      const mower = state.mowers[enemy.row];
+      if (mower && mower.active && enemy.x <= mower.x) {
+        mower.active = false;
+        state.invaders
+          .filter(other => other.row === enemy.row)
+          .forEach(other => {
+            other.dead = true;
+            spawnBurst(other.x, other.y, "#ffd66b", 14);
+          });
+        spawnBurst(mower.x, mower.y, "#ffd66b", 28);
+        announce(`Row ${enemy.row + 1} mower cleared the breach!`);
+        continue;
+      }
+    }
+    if (enemy.x < BOARD.x - 58) {
       enemy.dead = true;
       state.gate--;
       state.shake = 1;
@@ -936,19 +966,39 @@ function drawBoard() {
   }
 
   ctx.fillStyle = "#6d5062";
-  ctx.fillRect(35, BOARD.y - 10, 48, BOARD.h + 20);
+  ctx.fillRect(8, BOARD.y - 10, 42, BOARD.h + 20);
   ctx.fillStyle = "#cbb576";
   for (let row = 0; row < 5; row++) {
-    roundedRect(43, BOARD.y + row * CELL.h + 24, 31, 48, 8);
+    roundedRect(15, BOARD.y + row * CELL.h + 24, 27, 48, 8);
     ctx.fill();
     ctx.fillStyle = "#82713f";
-    ctx.fillRect(48, BOARD.y + row * CELL.h + 46, 21, 4);
+    ctx.fillRect(19, BOARD.y + row * CELL.h + 46, 19, 4);
     ctx.fillStyle = "#cbb576";
   }
   ctx.fillStyle = "rgba(238,246,216,.7)";
   ctx.font = "700 12px Segoe UI";
-  ctx.fillText("MOON GATE", 26, 94);
+  ctx.fillText("MOON GATE", 8, 94);
+  drawMowers();
   ctx.restore();
+}
+
+function drawMowers() {
+  state.mowers.forEach(mower => {
+    ctx.save();
+    ctx.translate(mower.x, mower.y + 24);
+    ctx.globalAlpha = mower.active ? 1 : .26;
+    ctx.fillStyle = "#bf5d4d";
+    roundedRect(-25, -13, 50, 16, 7);
+    ctx.fill();
+    ctx.fillStyle = "#f5c668";
+    ctx.fillRect(-17, -9, 34, 4);
+    ctx.fillStyle = "#283e35";
+    ctx.beginPath(); ctx.arc(-15, 7, 6, 0, Math.PI * 2); ctx.arc(15, 7, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#e8a857";
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-15, -14); ctx.lineTo(-22, -27); ctx.lineTo(-5, -27); ctx.stroke();
+    ctx.restore();
+  });
 }
 
 function drawSurgeBanner() {
@@ -1020,12 +1070,12 @@ function drawGuardian(unit) {
     ctx.fill();
     ctx.fillStyle = "#f9f0c1";
     ctx.beginPath(); ctx.arc(-3, -24, 3.5, 0, Math.PI * 2); ctx.arc(4, -24, 3.5, 0, Math.PI * 2); ctx.fill();
-  } else if (unit.type === "well" || unit.type === "tidewood") {
-    ctx.fillStyle = unit.type === "tidewood" ? "#4e8c81" : "#2c5a5a";
+  } else if (unit.type === "well") {
+    ctx.fillStyle = "#2c5a5a";
     ctx.beginPath();
     ctx.ellipse(0, 8, 24, 18, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = unit.type === "tidewood" ? "#80f0d3" : "#9ce8ff";
+    ctx.fillStyle = "#9ce8ff";
     ctx.beginPath(); ctx.ellipse(0, 4, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
     drawLeaf(-18, 0, 22, 28, "rgba(118, 214, 156, 0.8)", -0.8);
     drawLeaf(18, 2, 22, 28, "rgba(130, 224, 169, 0.8)", 0.8);
@@ -1223,8 +1273,17 @@ function drawShot(shot) {
   ctx.save();
   ctx.shadowColor = shot.color;
   ctx.shadowBlur = 14;
+  ctx.strokeStyle = shot.color;
   ctx.fillStyle = shot.color;
-  ctx.beginPath(); ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2); ctx.fill();
+  if (shot.type === "breeze") {
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(shot.x - 8, shot.y, 10, -1.1, 1.1);
+    ctx.arc(shot.x + 2, shot.y, 10, -1.1, 1.1);
+    ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.restore();
 }
 
