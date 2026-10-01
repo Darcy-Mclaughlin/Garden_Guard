@@ -28,6 +28,7 @@ Then visit <http://localhost:8000>.
 - The final Moon Surge includes a colossal Orchard Breaker that throws enemies into plots near the moon gate.
 - Click glowing dew drops to collect resources, and grab green plant food drops when energized enemies fall.
 - Use **Uproot** and click a placed guardian to remove it.
+- Enter `DEBUG` in the Test code field to unlock the safe testing console. Then use `HELP`, `TEST_ALL`, `FOOD`, `ENERGIZED`, `WAVE 5`, `WIN`, `LOSE`, or `RESET` to exercise systems without changing normal gameplay.
 - Keyboard: `1`–`9` and `0` select guardians, arrow keys move the plot cursor, `Enter` places, `R` toggles uproot mode, `Space` collects nearby dew, and `P` pauses.
 
 All visuals and game concepts are original and rendered with HTML, CSS, and Canvas. No external assets, libraries, or copyrighted game content are used.

@@ -17,7 +17,10 @@ const ui = {
   title: document.getElementById("messageTitle"),
   text: document.getElementById("messageText"),
   messageButton: document.getElementById("messageButton"),
-  toast: document.getElementById("toast")
+  toast: document.getElementById("toast"),
+  debugForm: document.getElementById("debugForm"),
+  debugInput: document.getElementById("debugInput"),
+  debugStatus: document.getElementById("debugStatus")
 };
 
 const BOARD = { x: 92, y: 105, w: 900, h: 475, rows: 5, cols: 9 };
@@ -93,7 +96,8 @@ function freshState() {
     shake: 0,
     speed: 1,
     energizedThisWave: 0,
-    maxEnergizedThisWave: 0
+    maxEnergizedThisWave: 0,
+    debugMode: false
   };
 }
 
@@ -108,7 +112,7 @@ function init() {
     button.dataset.id = id;
     button.setAttribute("aria-label", `${unit.name}, costs ${unit.cost} dew. ${unit.detail}`);
     const key = index === 9 ? 0 : index + 1;
-    button.innerHTML = `<span class="key">${key}</span><span class="defender-icon" style="color:${unit.color}">${unit.icon}</span><span class="defender-name">${unit.name}</span><span class="defender-meta">${unit.detail}</span><span class="defender-cost">💧 ${unit.cost}</span><span class="recharge" aria-hidden="true"></span>`;
+    button.innerHTML = `<span class="key">${key}</span><span class="defender-icon plant-icon plant-${id}" style="color:${unit.color}" aria-hidden="true"></span><span class="defender-name">${unit.name}</span><span class="defender-meta">${unit.detail}</span><span class="defender-cost">💧 ${unit.cost}</span><span class="recharge" aria-hidden="true"></span>`;
     button.addEventListener("click", () => selectDefender(id));
     ui.tray.appendChild(button);
   });
@@ -198,6 +202,72 @@ function announce(message) {
   ui.toast.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => ui.toast.classList.remove("show"), 2200);
+}
+
+function runDebugCommand(rawCommand) {
+  const command = rawCommand.trim().toUpperCase();
+  if (!command) return;
+  if (["GARDEN-DEBUG", "GARDEN DEBUG", "DEBUG", "TEST-GARDEN"].includes(command)) {
+    state.debugMode = true;
+    ui.debugStatus.textContent = "Debug unlocked";
+    announce("Debug mode unlocked. Try TEST_ALL or HELP.");
+    return;
+  }
+  if (!state.debugMode) {
+    ui.debugStatus.textContent = "Enter DEBUG first";
+    announce("Debug mode is locked.");
+    return;
+  }
+  if (command === "HELP") {
+    announce("Commands: TEST_ALL, FOOD, ENERGIZED, WAVE 5, WIN, LOSE, RESET.");
+  } else if (command === "TEST_ALL") {
+    state.resources = 9999;
+    state.guardians = [];
+    baseDefenderIds.forEach((id, index) => {
+      const row = Math.floor(index / BOARD.cols);
+      const col = index % BOARD.cols;
+      const pos = cellCenter(row, col);
+      const spec = defenders[id];
+      state.guardians.push({ type: id, row, col, x: pos.x, y: pos.y, hp: spec.hp, maxHp: spec.hp, timer: 0, pulse: 0 });
+    });
+    state.phase = "playing";
+    hidePanel();
+    announce("All guardians placed with full resources.");
+  } else if (command === "FOOD") {
+    const pos = cellCenter(state.cursor.row, state.cursor.col);
+    state.drops.push({ x: pos.x, y: pos.y, value: 1, life: 30, collected: false, bob: 0, kind: "food" });
+    announce("Plant food test drop created.");
+  } else if (command === "ENERGIZED") {
+    state.phase = "playing";
+    spawnEnemy("grub", state.cursor.row, BOARD.x + BOARD.w - 40, false, true);
+    hidePanel();
+    announce("Energized enemy test spawned.");
+  } else if (command.startsWith("WAVE ")) {
+    const requestedWave = Number(command.slice(5));
+    if (Number.isInteger(requestedWave) && requestedWave >= 1 && requestedWave <= MAX_WAVES) {
+      state.phase = "playing";
+      state.pendingSpawns = [];
+      state.invaders = [];
+      state.nextWaveIn = 6;
+      queueWave(requestedWave);
+      hidePanel();
+    } else {
+      announce(`Wave must be between 1 and ${MAX_WAVES}.`);
+    }
+  } else if (command === "WIN") {
+    state.phase = "playing";
+    finish(true);
+  } else if (command === "LOSE") {
+    state.phase = "playing";
+    finish(false);
+  } else if (command === "RESET") {
+    restart();
+    state.debugMode = true;
+    ui.debugStatus.textContent = "Debug unlocked";
+  } else {
+    announce("Unknown debug command. Try HELP.");
+  }
+  syncUI();
 }
 
 function cellCenter(row, col) {
@@ -423,6 +493,11 @@ ui.remove.addEventListener("click", () => {
   state.removeMode = !state.removeMode;
   syncUI();
   canvas.focus();
+});
+ui.debugForm.addEventListener("submit", event => {
+  event.preventDefault();
+  runDebugCommand(ui.debugInput.value);
+  ui.debugInput.select();
 });
 
 function queueWave(number) {
