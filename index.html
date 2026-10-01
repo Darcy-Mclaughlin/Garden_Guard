@@ -23,20 +23,22 @@
 
     <section class="control-deck game-menu" aria-label="Game menu">
       <div id="defenderTray" class="defender-tray" role="toolbar" aria-label="Choose a garden guardian"></div>
-      <div id="waveTrack" class="wave-track" aria-label="Ten wave campaign with Moon Surges at waves 3, 6, 9, and 10"></div>
+      <div class="menu-lower">
+        <div id="waveTrack" class="wave-track" aria-label="Ten wave campaign with Moon Surges at waves 3, 6, 9, and 10"></div>
+        <div class="utility-controls" aria-label="Watch controls">
+          <button id="removeButton" class="tool-button" type="button" aria-pressed="false" title="Remove a guardian (R)">
+            <span aria-hidden="true">✂</span> Uproot
+          </button>
+          <button id="startButton" class="primary-button" type="button">Start watch</button>
+          <button id="pauseButton" class="tool-button" type="button" disabled>Pause</button>
+          <button id="speedButton" class="tool-button" type="button" aria-pressed="false" title="Toggle game speed">Speed 1×</button>
+          <button id="restartButton" class="tool-button" type="button">New garden</button>
+        </div>
+      </div>
       <div class="enemy-guide" aria-label="Enemy resistance guide">
         <span><i class="resist-dot blast"></i><strong>Cinder Shell:</strong> resists orange blasts, weak to purple slow</span>
         <span><i class="resist-dot slow"></i><strong>Veil Stalker:</strong> resists purple slow, weak to orange blasts</span>
         <span><i class="resist-dot push"></i><strong>Ironroot:</strong> resists cyan push, weak to green sparks</span>
-      </div>
-      <div class="utility-controls">
-        <button id="removeButton" class="tool-button" type="button" aria-pressed="false" title="Remove a guardian (R)">
-          <span aria-hidden="true">✂</span> Uproot
-        </button>
-        <button id="startButton" class="primary-button" type="button">Begin watch</button>
-        <button id="pauseButton" class="tool-button" type="button" disabled>Pause</button>
-        <button id="speedButton" class="tool-button" type="button" aria-pressed="false" title="Toggle game speed">1× Speed</button>
-        <button id="restartButton" class="tool-button" type="button">Restart</button>
       </div>
     </section>
 
@@ -57,6 +59,12 @@
     <footer class="help-bar">
       <p><strong>Fusion:</strong> place a compatible guardian onto an occupied plot</p>
       <p><strong>Keyboard:</strong> <kbd>1</kbd>–<kbd>9</kbd>/<kbd>0</kbd> choose · arrows move · <kbd>Enter</kbd> place · <kbd>R</kbd> uproot · <kbd>P</kbd> pause</p>
+      <form id="debugForm" class="debug-tools" autocomplete="off">
+        <label for="debugInput">Test code</label>
+        <input id="debugInput" type="text" maxlength="40" placeholder="Enter code or command">
+        <button class="tool-button" type="submit">Run</button>
+        <span id="debugStatus" role="status">Debug locked</span>
+      </form>
     </footer>
   </main>
   <script src="game.js"></script>
