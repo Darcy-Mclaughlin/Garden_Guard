@@ -4,6 +4,16 @@ Garden Guard is an original, self-contained browser lane-defense game. Build a l
 
 The campaign starts with a small scouting wave and gives longer preparation windows between waves. Later formations grow substantially tougher, introduce resistance specialists, and culminate in the Orchard Breaker boss.
 
+## Levels
+
+- Level 1: Sprout Path - Glow Sprig, Dew Well, and Vine Lash.
+- Level 2: Bramble Rise - adds Bark Bastion, Thorn Coil, and Lantern Leaf, plus the first fusion lesson.
+- Level 3: Windfire Reach - adds Breeze Bell, Ember Pod, and Pebble Pod.
+- Level 4: Moonlit Grove - adds Tempo Reed, Mend Moss, and Mist Fern.
+- Level 5: Orchard Break - adds Sunburst Corm, Hush Cap, and Star Bloom, ending with the Orchard Breaker.
+
+Completing a level unlocks the next level in the main menu. Five new plants are introduced across the campaign: Vine Lash, Lantern Leaf, Pebble Pod, Mist Fern, and Star Bloom.
+
 ## Run
 
 No build or dependencies are required. Open `index.html` directly, or serve the folder locally:
