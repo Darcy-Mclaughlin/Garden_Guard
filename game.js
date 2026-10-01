@@ -17,15 +17,23 @@ const ui = {
   title: document.getElementById("messageTitle"),
   text: document.getElementById("messageText"),
   messageButton: document.getElementById("messageButton"),
+  levelMenu: document.getElementById("levelMenu"),
   toast: document.getElementById("toast"),
   debugForm: document.getElementById("debugForm"),
   debugInput: document.getElementById("debugInput"),
   debugStatus: document.getElementById("debugStatus")
 };
 
-const BOARD = { x: 92, y: 105, w: 900, h: 475, rows: 5, cols: 9 };
+const BOARD = { x: 58, y: 105, w: 964, h: 475, rows: 5, cols: 9 };
 const CELL = { w: BOARD.w / BOARD.cols, h: BOARD.h / BOARD.rows };
 const MAX_WAVES = 10;
+const LEVELS = [
+  { name: "Sprout Path", waves: 4, unlocks: ["sprig", "well", "vine"], detail: "Glow Sprig, Dew Well, Vine Lash" },
+  { name: "Bramble Rise", waves: 6, unlocks: ["sprig", "well", "vine", "bark", "coil", "lantern"], detail: "Barriers, thorns, and your first fusion" },
+  { name: "Windfire Reach", waves: 8, unlocks: ["sprig", "well", "vine", "bark", "coil", "lantern", "breeze", "ember", "pebble"], detail: "Gusts, mortars, and splash damage" },
+  { name: "Moonlit Grove", waves: 9, unlocks: ["sprig", "well", "vine", "bark", "coil", "lantern", "breeze", "ember", "pebble", "tempo", "mend", "mist"], detail: "Support plants and slowing mists" },
+  { name: "Orchard Break", waves: 10, unlocks: ["sprig", "well", "vine", "bark", "coil", "lantern", "breeze", "ember", "pebble", "tempo", "mend", "mist", "sunburst", "hush", "bloom"], detail: "Instant plants and the final boss" }
+];
 const SURGE_WAVES = [3, 6, 9, 10];
 const effectColors = { blast: "#ff9366", slow: "#d993f6", push: "#b8efff", direct: "#7de6a2" };
 
@@ -40,6 +48,11 @@ const defenders = {
   hush: { name: "Hush Cap", icon: "❄", cost: 125, recharge: 22, color: "#a9ddff", detail: "Instant garden chill", instant: "freeze" },
   mend: { name: "Mend Moss", icon: "✚", cost: 75, hp: 180, cooldown: 4.5, recharge: 6, color: "#a7f08c", detail: "Heals adjacent allies", support: true },
   tempo: { name: "Tempo Reed", icon: "♫", cost: 100, hp: 140, cooldown: 0, recharge: 8, color: "#f5d77a", detail: "Hastens adjacent allies", support: true },
+  vine: { name: "Vine Lash", icon: "〰", cost: 85, hp: 130, cooldown: 2.6, recharge: 5, color: "#87d66f", detail: "Snaring lane strikes" },
+  lantern: { name: "Lantern Leaf", icon: "✺", cost: 120, hp: 155, cooldown: 5, recharge: 7, color: "#ffe18a", detail: "Illuminates nearby allies", support: true },
+  pebble: { name: "Pebble Pod", icon: "●", cost: 105, hp: 160, cooldown: 2.8, recharge: 6, color: "#b8c9a3", detail: "Bouncing seed shots" },
+  mist: { name: "Mist Fern", icon: "≈", cost: 115, hp: 125, cooldown: 3.8, recharge: 7, color: "#a7e8e1", detail: "Lane-wide calming fog" },
+  bloom: { name: "Star Bloom", icon: "✿", cost: 145, hp: 180, cooldown: 1.8, recharge: 8, color: "#ff9fc7", detail: "Rapid radiant petals" },
   storm: { name: "Storm Bloom", icon: "✺", hp: 240, cooldown: 1.05, color: "#f1b4ff", detail: "Rapid slowing bolts", fused: true },
   tidewood: { name: "Tidewood", icon: "⬟", hp: 1050, cooldown: 6, color: "#73e4cf", detail: "Armored dew grower", fused: true },
   firewind: { name: "Firewind Orchid", icon: "✧", hp: 220, cooldown: 1.9, color: "#ffd07c", detail: "Heavy blast volleys", fused: true }
@@ -69,10 +82,12 @@ let state;
 let lastTime = performance.now();
 let animationId;
 let toastTimer;
+let unlockedLevel = Math.max(1, Math.min(5, Number(localStorage.getItem("gardenGuardUnlockedLevel")) || 1));
 
 function freshState() {
   return {
     phase: "ready",
+    level: 0,
     paused: false,
     resources: 150,
     gate: 4,
@@ -81,6 +96,12 @@ function freshState() {
     removeMode: false,
     cursor: { row: 2, col: 2 },
     guardians: [],
+    mowers: Array.from({ length: BOARD.rows }, (_, row) => ({
+      row,
+      x: BOARD.x - 22,
+      y: cellCenter(row, 0).y,
+      active: true
+    })),
     invaders: [],
     shots: [],
     drops: [],
@@ -103,8 +124,26 @@ function freshState() {
 
 function init() {
   state = freshState();
+  renderLevelMenu();
+  renderTray();
+  syncUI();
+  showMainMenu();
+  draw();
+}
+
+function renderLevelMenu() {
+  ui.levelMenu.innerHTML = LEVELS.map((level, index) =>
+    `<button type="button" data-level="${index}" ${index + 1 > unlockedLevel ? "disabled" : ""}><strong>Level ${index + 1}</strong><small>${level.name}</small></button>`
+  ).join("");
+  ui.levelMenu.querySelectorAll("button").forEach(button => {
+    button.addEventListener("click", () => chooseLevel(Number(button.dataset.level)));
+  });
+}
+
+function renderTray() {
+  const available = state.level ? LEVELS[state.level - 1].unlocks : LEVELS[0].unlocks;
   ui.tray.innerHTML = "";
-  baseDefenderIds.forEach((id, index) => {
+  available.forEach((id, index) => {
     const unit = defenders[id];
     const button = document.createElement("button");
     button.type = "button";
@@ -116,12 +155,26 @@ function init() {
     button.addEventListener("click", () => selectDefender(id));
     ui.tray.appendChild(button);
   });
+}
+
+function showMainMenu() {
+  showPanel("Choose your level", "Grow your roster through five increasingly difficult gardens.", "Choose a level", () => {});
+  ui.messageButton.style.display = "none";
+  ui.levelMenu.style.display = "grid";
+}
+
+function chooseLevel(levelIndex) {
+  state = freshState();
+  state.level = levelIndex + 1;
+  renderTray();
   syncUI();
-  showPanel("Defend the moon gate", "Choose a guardian, place it on a garden plot, then begin the watch.", "Ready the garden", startGame);
-  draw();
+  showPanel(`Level ${state.level}: ${LEVELS[levelIndex].name}`, LEVELS[levelIndex].detail + ". Prepare your garden, then begin the watch.", "Begin level", startGame);
+  ui.messageButton.style.display = "";
+  ui.levelMenu.style.display = "none";
 }
 
 function selectDefender(id) {
+  if (!id || !defenders[id]) return announce("That guardian unlocks in a later level.");
   state.selected = id;
   state.removeMode = false;
   syncUI();
@@ -130,14 +183,15 @@ function selectDefender(id) {
 
 function syncUI() {
   ui.resources.textContent = Math.floor(state.resources);
-  ui.wave.textContent = `${state.wave} / ${MAX_WAVES}`;
+  const maxWaves = state.level ? LEVELS[state.level - 1].waves : 0;
+  ui.wave.textContent = `${state.wave} / ${maxWaves}`;
   ui.gate.textContent = state.gate;
   ui.pause.textContent = state.paused ? "Resume" : "Pause";
   ui.speed.textContent = `${state.speed}× Speed`;
   ui.speed.setAttribute("aria-pressed", String(state.speed === 2));
   ui.pause.disabled = state.phase !== "playing";
   ui.start.disabled = state.phase !== "ready";
-  ui.start.textContent = state.phase === "ready" ? "Begin watch" : "Watch begun";
+  ui.start.textContent = state.phase === "ready" ? "Start level" : "Level active";
   ui.remove.setAttribute("aria-pressed", String(state.removeMode));
   ui.tray.querySelectorAll(".defender-card").forEach(button => {
     const unit = defenders[button.dataset.id];
@@ -147,12 +201,12 @@ function syncUI() {
     button.querySelector(".recharge").textContent = recharge > 0 ? `${recharge.toFixed(1)}s` : "";
     button.disabled = state.resources < unit.cost || recharge > 0 || state.phase === "won" || state.phase === "lost";
   });
-  ui.waveTrack.innerHTML = Array.from({ length: MAX_WAVES }, (_, index) => {
+  ui.waveTrack.innerHTML = Array.from({ length: maxWaves }, (_, index) => {
     const wave = index + 1;
     const classes = ["wave-mark"];
     if (wave < state.wave) classes.push("done");
     if (wave === state.wave) classes.push("active");
-    if (SURGE_WAVES.includes(wave)) classes.push("surge");
+    if (SURGE_WAVES.includes(wave) || (state.level === 5 && wave === maxWaves)) classes.push("surge");
     return `<span class="${classes.join(" ")}" title="${SURGE_WAVES.includes(wave) ? `Moon Surge ${wave}` : `Wave ${wave}`}"></span>`;
   }).join("");
 }
@@ -193,8 +247,9 @@ function togglePause() {
 
 function restart() {
   state = freshState();
+  renderTray();
   syncUI();
-  showPanel("Defend the moon gate", "Choose a guardian, place it on a garden plot, then begin the watch.", "Ready the garden", startGame);
+  showMainMenu();
 }
 
 function announce(message) {
@@ -244,7 +299,7 @@ function runDebugCommand(rawCommand) {
     announce("Energized enemy test spawned.");
   } else if (command.startsWith("WAVE ")) {
     const requestedWave = Number(command.slice(5));
-    if (Number.isInteger(requestedWave) && requestedWave >= 1 && requestedWave <= MAX_WAVES) {
+    if (Number.isInteger(requestedWave) && requestedWave >= 1 && requestedWave <= (state.level ? LEVELS[state.level - 1].waves : MAX_WAVES)) {
       state.phase = "playing";
       state.pendingSpawns = [];
       state.invaders = [];
@@ -252,7 +307,7 @@ function runDebugCommand(rawCommand) {
       queueWave(requestedWave);
       hidePanel();
     } else {
-      announce(`Wave must be between 1 and ${MAX_WAVES}.`);
+      announce(`Wave must be between 1 and ${state.level ? LEVELS[state.level - 1].waves : MAX_WAVES}.`);
     }
   } else if (command === "WIN") {
     state.phase = "playing";
@@ -430,9 +485,12 @@ function collectDrop(drop) {
 
 function canvasPoint(event) {
   const rect = canvas.getBoundingClientRect();
+  const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+  const offsetX = (rect.width - canvas.width * scale) / 2;
+  const offsetY = (rect.height - canvas.height * scale) / 2;
   return {
-    x: (event.clientX - rect.left) * canvas.width / rect.width,
-    y: (event.clientY - rect.top) * canvas.height / rect.height
+    x: (event.clientX - rect.left - offsetX) / scale,
+    y: (event.clientY - rect.top - offsetY) / scale
   };
 }
 
@@ -462,9 +520,10 @@ canvas.addEventListener("pointermove", event => {
 
 canvas.addEventListener("keydown", event => {
   const key = event.key.toLowerCase();
+  const available = state.level ? LEVELS[state.level - 1].unlocks : LEVELS[0].unlocks;
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter"].includes(key)) event.preventDefault();
-  if (key >= "1" && key <= "9") selectDefender(baseDefenderIds[Number(key) - 1]);
-  if (key === "0") selectDefender(baseDefenderIds[9]);
+  if (key >= "1" && key <= "9") selectDefender(available[Number(key) - 1]);
+  if (key === "0") selectDefender(available[9]);
   if (key === "r") {
     state.removeMode = !state.removeMode;
     syncUI();
@@ -502,6 +561,7 @@ ui.debugForm.addEventListener("submit", event => {
 
 function queueWave(number) {
   state.wave = number;
+  const levelWaves = LEVELS[state.level - 1]?.waves || MAX_WAVES;
   state.energizedThisWave = 0;
   state.maxEnergizedThisWave = number >= 2 ? Math.min(3, 1 + Math.floor(number / 4)) : 0;
   const isSurge = SURGE_WAVES.includes(number);
@@ -519,7 +579,7 @@ function queueWave(number) {
     if (number >= 5 && i % 10 === 6) type = "scribe";
     if (number >= 7 && i % 11 === 7) type = "herald";
     if (isSurge && number < MAX_WAVES && i === count - 1) type = "warden";
-    if (number === MAX_WAVES && i === count - 1) type = "boss";
+    if (state.level === 5 && number === levelWaves && i === count - 1) type = "boss";
     if (energyRoll) {
       state.energizedThisWave += 1;
     }
@@ -528,7 +588,7 @@ function queueWave(number) {
   }
   state.waveClock = 0;
   state.surgeFlash = isSurge ? 3 : 0;
-  announce(number === MAX_WAVES ? "FINAL MOON SURGE! The Orchard Breaker approaches!" : isSurge ? `Moon Surge ${number}! A Gloam Warden approaches.` : `Wave ${number} rustles into view.`);
+  announce(state.level === 5 && number === levelWaves ? "FINAL MOON SURGE! The Orchard Breaker approaches!" : isSurge ? `Moon Surge ${number}! A Gloam Warden approaches.` : `Wave ${number} rustles into view.`);
   syncUI();
 }
 
@@ -596,7 +656,8 @@ function update(dt) {
   }
 
   if (state.wave > 0 && !state.pendingSpawns.length && !state.invaders.length) {
-    if (state.wave >= MAX_WAVES) return finish(true);
+    const levelWaves = LEVELS[state.level - 1]?.waves || MAX_WAVES;
+    if (state.wave >= levelWaves) return finish(true);
     state.nextWaveIn -= dt;
     if (state.nextWaveIn <= 0) {
       state.nextWaveIn = Math.max(6, 9 - state.wave * 0.2);
@@ -621,7 +682,7 @@ function updateGuardians(dt) {
     unit.pulse = Math.max(0, unit.pulse - dt);
     const spec = defenders[unit.type];
     const hasted = state.guardians.some(other =>
-      other.type === "tempo" &&
+      (other.type === "tempo" || other.type === "lantern") &&
       Math.abs(other.row - unit.row) + Math.abs(other.col - unit.col) === 1
     );
     const abilityCooldown = spec.cooldown * (hasted ? .68 : 1);
@@ -645,13 +706,15 @@ function updateGuardians(dt) {
     } else if (unit.type === "breeze" && targets.length && unit.timer <= 0) {
       unit.timer = abilityCooldown;
       unit.pulse = .4;
-      targets.slice(0, 4).forEach(enemy => {
-        const spec = enemies[enemy.type];
-        if (spec.resist !== "push") enemy.x = Math.min(BOARD.x + BOARD.w, enemy.x + (spec.weakness === "push" ? 52 : 34));
-        damageEnemy(enemy, 6, "push");
-        spawnBurst(enemy.x, enemy.y, spec.color, 4);
+      const target = targets[0];
+      state.shots.push({
+        type: "breeze", row: unit.row, x: unit.x + 26, y: unit.y - 8,
+        startX: unit.x + 26, startY: unit.y - 8,
+        targetX: target.x, targetY: target.y,
+        travel: 0, age: 0, speed: 330, effect: "push", damage: 8,
+        splash: 0, color: spec.color, radius: 9
       });
-    } else if (unit.type === "coil" && targets.length && unit.timer <= 0) {
+    } else if (["coil", "vine", "mist"].includes(unit.type) && targets.length && unit.timer <= 0) {
       unit.timer = abilityCooldown;
       unit.pulse = .45;
       targets.forEach(enemy => {
@@ -659,7 +722,7 @@ function updateGuardians(dt) {
         if (enemies[enemy.type].resist !== "slow") enemy.slow = enemies[enemy.type].weakness === "slow" ? 4.5 : 2.8;
         spawnBurst(enemy.x, enemy.y, spec.color, 3);
       });
-    } else if (["sprig", "ember", "storm", "firewind"].includes(unit.type) && targets.length && unit.timer <= 0) {
+    } else if (["sprig", "ember", "storm", "firewind", "pebble", "bloom"].includes(unit.type) && targets.length && unit.timer <= 0) {
       unit.timer = abilityCooldown;
       unit.pulse = .2;
       const isBlast = unit.type === "ember" || unit.type === "firewind";
@@ -671,9 +734,9 @@ function updateGuardians(dt) {
         travel: isBlast ? .72 : 0,
         age: 0,
         speed: 265,
-        effect: isBlast ? "blast" : unit.type === "storm" ? "slow" : "direct",
-        damage: unit.type === "storm" ? 25 : unit.type === "firewind" ? 42 : unit.type === "ember" ? 32 : 22,
-        splash: isBlast ? (unit.type === "firewind" ? 85 : 55) : 0,
+        effect: isBlast ? "blast" : ["storm", "vine", "mist"].includes(unit.type) ? "slow" : "direct",
+        damage: unit.type === "storm" ? 25 : unit.type === "firewind" ? 42 : unit.type === "ember" ? 32 : unit.type === "pebble" ? 28 : unit.type === "bloom" ? 30 : 22,
+        splash: isBlast ? (unit.type === "firewind" ? 85 : 55) : unit.type === "pebble" ? 28 : 0,
         color: spec.color, radius: isBlast ? 11 : unit.type === "coil" ? 9 : 7
       });
     }
@@ -703,7 +766,7 @@ function updateShots(dt) {
         : [hit];
       victims.forEach(enemy => {
         damageEnemy(enemy, shot.damage, shot.effect);
-        if ((shot.type === "coil" || shot.type === "storm") && enemies[enemy.type].resist !== "slow") {
+        if (["coil", "storm", "vine", "mist"].includes(shot.type) && enemies[enemy.type].resist !== "slow") {
           enemy.slow = enemies[enemy.type].weakness === "slow" ? 4 : 2.6;
         }
       });
@@ -716,6 +779,9 @@ function updateShots(dt) {
           spawnBurst(ricochet.x, ricochet.y, shot.color, 5);
         }
       }
+      if (shot.type === "breeze" && enemies[hit.type].resist !== "push") {
+        hit.x = Math.min(BOARD.x + BOARD.w, hit.x + (enemies[hit.type].weakness === "push" ? 52 : 34));
+      }
       shot.dead = true;
       spawnBurst(shot.x, shot.y, shot.color, 7);
     }
@@ -727,6 +793,7 @@ function updateShots(dt) {
 function updateInvaders(dt) {
   const thrownEnemies = [];
   for (const enemy of state.invaders) {
+    if (enemy.dead) continue;
     const spec = enemies[enemy.type];
     enemy.step += dt * 6;
     enemy.slow = Math.max(0, enemy.slow - dt);
@@ -789,7 +856,22 @@ function updateInvaders(dt) {
         announce("Energized enemy dropped plant food!");
       }
       spawnBurst(enemy.x, enemy.y, spec.color, 15);
-    } else if (enemy.x < BOARD.x - 36) {
+    } else {
+      const mower = state.mowers[enemy.row];
+      if (mower && mower.active && enemy.x <= mower.x) {
+        mower.active = false;
+        state.invaders
+          .filter(other => other.row === enemy.row)
+          .forEach(other => {
+            other.dead = true;
+            spawnBurst(other.x, other.y, "#ffd66b", 14);
+          });
+        spawnBurst(mower.x, mower.y, "#ffd66b", 28);
+        announce(`Row ${enemy.row + 1} mower cleared the breach!`);
+        continue;
+      }
+    }
+    if (enemy.x < BOARD.x - 58) {
       enemy.dead = true;
       state.gate--;
       state.shake = 1;
@@ -852,7 +934,11 @@ function finish(won) {
   state.paused = false;
   syncUI();
   if (won) {
-    showPanel("The moonmeadow is safe!", `You held all ${MAX_WAVES} waves with ${state.gate} gate ward${state.gate === 1 ? "" : "s"} remaining.`, "Guard again", restart);
+    const levelWaves = LEVELS[state.level - 1]?.waves || MAX_WAVES;
+    unlockedLevel = Math.max(unlockedLevel, Math.min(5, state.level + 1));
+    localStorage.setItem("gardenGuardUnlockedLevel", String(unlockedLevel));
+    renderLevelMenu();
+    showPanel("The moonmeadow is safe!", `You held all ${levelWaves} waves with ${state.gate} gate ward${state.gate === 1 ? "" : "s"} remaining.`, "Choose another level", restart);
   } else {
     showPanel("The moon gate has fallen", `The garden held through wave ${state.wave}. Try a new mix of wells, sparks, thorns, and bark.`, "Try again", restart);
   }
@@ -936,19 +1022,39 @@ function drawBoard() {
   }
 
   ctx.fillStyle = "#6d5062";
-  ctx.fillRect(35, BOARD.y - 10, 48, BOARD.h + 20);
+  ctx.fillRect(8, BOARD.y - 10, 42, BOARD.h + 20);
   ctx.fillStyle = "#cbb576";
   for (let row = 0; row < 5; row++) {
-    roundedRect(43, BOARD.y + row * CELL.h + 24, 31, 48, 8);
+    roundedRect(15, BOARD.y + row * CELL.h + 24, 27, 48, 8);
     ctx.fill();
     ctx.fillStyle = "#82713f";
-    ctx.fillRect(48, BOARD.y + row * CELL.h + 46, 21, 4);
+    ctx.fillRect(19, BOARD.y + row * CELL.h + 46, 19, 4);
     ctx.fillStyle = "#cbb576";
   }
   ctx.fillStyle = "rgba(238,246,216,.7)";
   ctx.font = "700 12px Segoe UI";
-  ctx.fillText("MOON GATE", 26, 94);
+  ctx.fillText("MOON GATE", 8, 94);
+  drawMowers();
   ctx.restore();
+}
+
+function drawMowers() {
+  state.mowers.forEach(mower => {
+    ctx.save();
+    ctx.translate(mower.x, mower.y + 24);
+    ctx.globalAlpha = mower.active ? 1 : .26;
+    ctx.fillStyle = "#bf5d4d";
+    roundedRect(-25, -13, 50, 16, 7);
+    ctx.fill();
+    ctx.fillStyle = "#f5c668";
+    ctx.fillRect(-17, -9, 34, 4);
+    ctx.fillStyle = "#283e35";
+    ctx.beginPath(); ctx.arc(-15, 7, 6, 0, Math.PI * 2); ctx.arc(15, 7, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#e8a857";
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-15, -14); ctx.lineTo(-22, -27); ctx.lineTo(-5, -27); ctx.stroke();
+    ctx.restore();
+  });
 }
 
 function drawSurgeBanner() {
@@ -965,7 +1071,8 @@ function drawSurgeBanner() {
   ctx.fillStyle = "#f2c8ff";
   ctx.textAlign = "center";
   ctx.font = "900 22px Segoe UI";
-  ctx.fillText(state.wave === MAX_WAVES ? "FINAL MOON SURGE" : `MOON SURGE ${state.wave}`, 540, 75);
+  const finalWave = LEVELS[state.level - 1]?.waves || MAX_WAVES;
+  ctx.fillText(state.level === 5 && state.wave === finalWave ? "FINAL MOON SURGE" : `MOON SURGE ${state.wave}`, 540, 75);
   ctx.textAlign = "start";
   ctx.restore();
 }
@@ -1020,12 +1127,12 @@ function drawGuardian(unit) {
     ctx.fill();
     ctx.fillStyle = "#f9f0c1";
     ctx.beginPath(); ctx.arc(-3, -24, 3.5, 0, Math.PI * 2); ctx.arc(4, -24, 3.5, 0, Math.PI * 2); ctx.fill();
-  } else if (unit.type === "well" || unit.type === "tidewood") {
-    ctx.fillStyle = unit.type === "tidewood" ? "#4e8c81" : "#2c5a5a";
+  } else if (unit.type === "well") {
+    ctx.fillStyle = "#2c5a5a";
     ctx.beginPath();
     ctx.ellipse(0, 8, 24, 18, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = unit.type === "tidewood" ? "#80f0d3" : "#9ce8ff";
+    ctx.fillStyle = "#9ce8ff";
     ctx.beginPath(); ctx.ellipse(0, 4, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
     drawLeaf(-18, 0, 22, 28, "rgba(118, 214, 156, 0.8)", -0.8);
     drawLeaf(18, 2, 22, 28, "rgba(130, 224, 169, 0.8)", 0.8);
@@ -1223,8 +1330,17 @@ function drawShot(shot) {
   ctx.save();
   ctx.shadowColor = shot.color;
   ctx.shadowBlur = 14;
+  ctx.strokeStyle = shot.color;
   ctx.fillStyle = shot.color;
-  ctx.beginPath(); ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2); ctx.fill();
+  if (shot.type === "breeze") {
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(shot.x - 8, shot.y, 10, -1.1, 1.1);
+    ctx.arc(shot.x + 2, shot.y, 10, -1.1, 1.1);
+    ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.restore();
 }
 
