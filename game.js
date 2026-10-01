@@ -91,7 +91,9 @@ function freshState() {
     surgeFlash: 0,
     elapsed: 0,
     shake: 0,
-    speed: 1
+    speed: 1,
+    energizedThisWave: 0,
+    maxEnergizedThisWave: 0
   };
 }
 
@@ -266,9 +268,91 @@ function placeAt(row, col) {
   syncUI();
 }
 
+function triggerPlantFood() {
+  if (!state.guardians.length) {
+    announce("Plant food bursts into the soil, but the garden is empty.");
+    return;
+  }
+
+  state.guardians.forEach(unit => {
+    const spec = defenders[unit.type];
+    const nearby = state.invaders.filter(enemy => Math.abs(enemy.row - unit.row) <= 1 && enemy.x <= BOARD.x + BOARD.w && enemy.x >= unit.x - 200);
+    switch (unit.type) {
+      case "sprig":
+        nearby.slice(0, 3).forEach(enemy => damageEnemy(enemy, 90, "direct"));
+        break;
+      case "well":
+        state.resources += 35;
+        state.guardians.forEach(ally => {
+          ally.hp = Math.min(ally.maxHp, ally.hp + 55);
+        });
+        break;
+      case "coil":
+        nearby.forEach(enemy => {
+          damageEnemy(enemy, 48, "slow");
+          enemy.slow = Math.max(enemy.slow, 3.4);
+        });
+        break;
+      case "bark":
+        unit.hp = Math.min(unit.maxHp, unit.hp + 220);
+        nearby.forEach(enemy => damageEnemy(enemy, 26, "blast"));
+        break;
+      case "ember":
+        state.invaders.forEach(enemy => {
+          if (Math.abs(enemy.x - unit.x) < 200) damageEnemy(enemy, 36, "blast");
+        });
+        break;
+      case "breeze":
+        state.invaders.forEach(enemy => {
+          if (enemy.x <= BOARD.x + BOARD.w) enemy.x = Math.min(BOARD.x + BOARD.w, enemy.x + 58);
+          damageEnemy(enemy, 30, "push");
+        });
+        break;
+      case "mend":
+        state.guardians.forEach(ally => {
+          ally.hp = Math.min(ally.maxHp, ally.hp + 90);
+        });
+        break;
+      case "tempo":
+        state.guardians.forEach(ally => {
+          ally.timer = 0;
+        });
+        break;
+      case "storm":
+        state.invaders.filter(enemy => Math.abs(enemy.x - unit.x) < 230).forEach(enemy => {
+          damageEnemy(enemy, 60, "slow");
+          enemy.slow = Math.max(enemy.slow, 4.5);
+        });
+        break;
+      case "tidewood":
+        state.drops.push({ x: unit.x + 22, y: unit.y - 18, value: 45, life: 16, collected: false, bob: Math.random() * 6, kind: "dew" });
+        break;
+      case "firewind":
+        state.invaders.forEach(enemy => {
+          if (Math.abs(enemy.x - unit.x) < 230) damageEnemy(enemy, 50, "blast");
+        });
+        break;
+      default:
+        nearby.slice(0, 2).forEach(enemy => damageEnemy(enemy, 34, "direct"));
+        break;
+    }
+    spawnBurst(unit.x, unit.y, spec.color, 18);
+    unit.pulse = 1.1;
+  });
+
+  state.effects.push({ type: "food", x: BOARD.x + BOARD.w / 2, y: BOARD.y + BOARD.h / 2, radius: 0, maxRadius: 480, life: 1.2, maxLife: 1.2 });
+  announce("Plant food awakens every guardian with a burst of growth!");
+  syncUI();
+}
+
 function collectDrop(drop) {
   if (drop.collected) return;
   drop.collected = true;
+  if (drop.kind === "food") {
+    triggerPlantFood();
+    spawnBurst(drop.x, drop.y, "#9fe97a", 18);
+    return;
+  }
   state.resources += drop.value;
   spawnBurst(drop.x, drop.y, "#8feaff", 12);
   syncUI();
@@ -343,11 +427,14 @@ ui.remove.addEventListener("click", () => {
 
 function queueWave(number) {
   state.wave = number;
+  state.energizedThisWave = 0;
+  state.maxEnergizedThisWave = number >= 2 ? Math.min(3, 1 + Math.floor(number / 4)) : 0;
   const isSurge = SURGE_WAVES.includes(number);
   const waveSizes = [4, 6, 9, 11, 14, 18, 20, 23, 27, 24];
   const count = waveSizes[number - 1];
   for (let i = 0; i < count; i++) {
     let type = "grub";
+    const energyRoll = number >= 2 && state.energizedThisWave < state.maxEnergizedThisWave && Math.random() < 0.12 + number * 0.01 && i % 5 === 2;
     if (number >= 2 && i % 3 === 1) type = "skitter";
     if (number >= 3 && (i + number) % 5 === 0) type = "rammer";
     if (number >= 4 && i % 6 === 2) type = "cinder";
@@ -358,8 +445,11 @@ function queueWave(number) {
     if (number >= 7 && i % 11 === 7) type = "herald";
     if (isSurge && number < MAX_WAVES && i === count - 1) type = "warden";
     if (number === MAX_WAVES && i === count - 1) type = "boss";
+    if (energyRoll) {
+      state.energizedThisWave += 1;
+    }
     const interval = number === 1 ? 2.6 : number === 2 ? 2.2 : number === 3 ? 1.8 : Math.max(0.7, 1.48 - number * 0.065);
-    state.pendingSpawns.push({ at: i * interval, type, row: Math.floor(Math.random() * 5) });
+    state.pendingSpawns.push({ at: i * interval, type, row: Math.floor(Math.random() * 5), energized: energyRoll && type !== "boss" && type !== "warden" });
   }
   state.waveClock = 0;
   state.surgeFlash = isSurge ? 3 : 0;
@@ -367,7 +457,7 @@ function queueWave(number) {
   syncUI();
 }
 
-function spawnEnemy(type, row, x = BOARD.x + BOARD.w + 42, thrown = false) {
+function spawnEnemy(type, row, x = BOARD.x + BOARD.w + 42, thrown = false, energized = false) {
   const spec = enemies[type];
   const waveScale = Math.max(0, state.wave - 1);
   state.invaders.push({
@@ -380,7 +470,8 @@ function spawnEnemy(type, row, x = BOARD.x + BOARD.w + 42, thrown = false) {
     damageScale: 1 + waveScale * .075,
     attackTimer: 0, throwTimer: spec.boss ? 5.5 : 0,
     slow: 0, frozen: 0, enraged: false, vaulted: false,
-    step: Math.random() * Math.PI * 2, thrown
+    step: Math.random() * Math.PI * 2, thrown,
+    energized
   });
 }
 
@@ -426,7 +517,7 @@ function update(dt) {
 
   while (state.pendingSpawns.length && state.pendingSpawns[0].at <= state.waveClock) {
     const item = state.pendingSpawns.shift();
-    spawnEnemy(item.type, item.row);
+    spawnEnemy(item.type, item.row, BOARD.x + BOARD.w + 42, false, Boolean(item.energized));
   }
 
   if (state.wave > 0 && !state.pendingSpawns.length && !state.invaders.length) {
@@ -569,6 +660,11 @@ function updateInvaders(dt) {
       if (enemy.hp <= 0) {
         enemy.dead = true;
         state.resources += spec.reward;
+        if (enemy.energized) {
+          state.drops.push({ x: enemy.x, y: enemy.y, value: 1, life: 18, collected: false, bob: Math.random() * 6, kind: "food" });
+          spawnBurst(enemy.x, enemy.y, "#b7ff89", 20);
+          announce("Energized enemy dropped plant food!");
+        }
         spawnBurst(enemy.x, enemy.y, spec.color, 15);
       }
       continue;
@@ -612,6 +708,11 @@ function updateInvaders(dt) {
     if (enemy.hp <= 0) {
       enemy.dead = true;
       state.resources += spec.reward;
+      if (enemy.energized) {
+        state.drops.push({ x: enemy.x, y: enemy.y, value: 1, life: 18, collected: false, bob: Math.random() * 6, kind: "food" });
+        spawnBurst(enemy.x, enemy.y, "#b7ff89", 20);
+        announce("Energized enemy dropped plant food!");
+      }
       spawnBurst(enemy.x, enemy.y, spec.color, 15);
     } else if (enemy.x < BOARD.x - 36) {
       enemy.dead = true;
@@ -794,117 +895,142 @@ function drawSurgeBanner() {
   ctx.restore();
 }
 
+function drawLeaf(x, y, width, height, color, rotation = 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(width, -height * .5, width * 1.3, 0);
+  ctx.quadraticCurveTo(width, height * .55, 0, 0);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawGuardian(unit) {
   const spec = defenders[unit.type];
+  const sway = Math.sin(state.elapsed * 2 + unit.col) * 3;
   ctx.save();
-  ctx.translate(unit.x, unit.y + Math.sin(state.elapsed * 2 + unit.col) * 2);
-  if (unit.pulse) ctx.scale(1 + unit.pulse * .08, 1 + unit.pulse * .08);
+  ctx.translate(unit.x, unit.y + sway);
+  if (unit.pulse) ctx.scale(1 + unit.pulse * .12, 1 + unit.pulse * .12);
 
   ctx.fillStyle = "rgba(4,20,14,.28)";
   ctx.beginPath();
-  ctx.ellipse(0, 31, 32, 9, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 30, 30, 8, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (unit.type === "bark" || unit.type === "tidewood") {
-    ctx.fillStyle = unit.type === "tidewood" ? "#387568" : "#8d6443";
-    roundedRect(-28, -34, 56, 67, 18);
+  ctx.strokeStyle = "#3f6a4f";
+  ctx.lineWidth = 7;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(0, 26);
+  ctx.quadraticCurveTo(3, 8, 0, -20);
+  ctx.stroke();
+
+  const ground = unit.type === "bark" || unit.type === "tidewood" ? "#7c5a3e" : unit.type === "well" ? "#2e6c67" : "#4d7d55";
+  ctx.fillStyle = ground;
+  ctx.beginPath();
+  ctx.ellipse(0, 26, 18, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (["sprig", "storm", "firewind", "ember"].includes(unit.type)) {
+    drawLeaf(-16, 0, 16, 22, "rgba(72, 174, 102, 0.75)", -0.8);
+    drawLeaf(16, 2, 18, 24, "rgba(86, 192, 109, 0.8)", 0.8);
+    drawLeaf(-8, -18, 16, 20, spec.color, -1.1);
+    drawLeaf(8, -18, 16, 20, spec.color, 1.1);
+    ctx.fillStyle = spec.color;
+    ctx.beginPath();
+    ctx.arc(0, -22, 12, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = spec.color;
+    ctx.fillStyle = "#f9f0c1";
+    ctx.beginPath(); ctx.arc(-3, -24, 3.5, 0, Math.PI * 2); ctx.arc(4, -24, 3.5, 0, Math.PI * 2); ctx.fill();
+  } else if (unit.type === "well" || unit.type === "tidewood") {
+    ctx.fillStyle = unit.type === "tidewood" ? "#4e8c81" : "#2c5a5a";
+    ctx.beginPath();
+    ctx.ellipse(0, 8, 24, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = unit.type === "tidewood" ? "#80f0d3" : "#9ce8ff";
+    ctx.beginPath(); ctx.ellipse(0, 4, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
+    drawLeaf(-18, 0, 22, 28, "rgba(118, 214, 156, 0.8)", -0.8);
+    drawLeaf(18, 2, 22, 28, "rgba(130, 224, 169, 0.8)", 0.8);
+    drawLeaf(0, -18, 18, 24, "rgba(117, 226, 200, 0.75)", 0.2);
+  } else if (unit.type === "coil" || unit.type === "storm") {
+    ctx.strokeStyle = "#407a52";
     ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.moveTo(-10, -22); ctx.lineTo(-18, 10); ctx.lineTo(-4, 25);
-    ctx.moveTo(9, -28); ctx.lineTo(17, -3); ctx.lineTo(8, 20);
+    for (let i = 0; i < 6; i++) {
+      const x = i % 2 === 0 ? i * 5 - 10 : i * 5 - 6;
+      ctx.moveTo(0, 15 + i * 3);
+      ctx.quadraticCurveTo(x, -8 + i * 2, x * 0.7, -22 + i * 2);
+    }
+    ctx.stroke();
+    drawLeaf(-18, -8, 16, 18, "rgba(118, 194, 104, 0.8)", -1.0);
+    drawLeaf(18, -4, 18, 20, "rgba(129, 215, 120, 0.75)", 1.0);
+    ctx.fillStyle = spec.color;
+    ctx.beginPath();
+    ctx.arc(0, -20, 10, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (unit.type === "breeze") {
+    ctx.strokeStyle = "#476d77";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, 24);
+    ctx.quadraticCurveTo(0, -10, 0, -26);
+    ctx.stroke();
+    ctx.strokeStyle = spec.color;
+    ctx.beginPath();
+    ctx.moveTo(-14, -8); ctx.quadraticCurveTo(-6, -22, 0, -10); ctx.moveTo(0, -10); ctx.quadraticCurveTo(8, -22, 15, -8);
+    ctx.stroke();
+    drawLeaf(-18, -8, 20, 20, "rgba(122, 229, 255, 0.7)", -1.2);
+    drawLeaf(18, -8, 20, 20, "rgba(122, 229, 255, 0.7)", 1.2);
+  } else if (unit.type === "mend") {
+    drawLeaf(-18, 4, 18, 22, "rgba(136, 214, 98, 0.8)", -1.2);
+    drawLeaf(18, 4, 18, 22, "rgba(136, 214, 98, 0.8)", 1.2);
+    drawLeaf(0, -16, 18, 22, spec.color, 0.2);
+    ctx.fillStyle = "#5ea26d";
+    ctx.beginPath(); ctx.ellipse(0, 8, 20, 14, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = spec.color;
+    ctx.beginPath(); ctx.arc(0, -18, 11, 0, Math.PI * 2); ctx.fill();
+  } else if (unit.type === "tempo") {
+    ctx.strokeStyle = "#748f4f";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, 24); ctx.quadraticCurveTo(0, -8, 0, -26); ctx.stroke();
+    ctx.fillStyle = spec.color;
+    ctx.beginPath(); ctx.arc(10, -23, 10, 0, Math.PI * 2); ctx.fill();
+    drawLeaf(-18, -5, 18, 22, "rgba(255, 212, 105, 0.8)", -1.1);
+    drawLeaf(18, -5, 18, 22, "rgba(255, 212, 105, 0.8)", 1.1);
+  } else if (unit.type === "bark" || unit.type === "tidewood") {
+    ctx.fillStyle = unit.type === "tidewood" ? "#4b7c68" : "#8d6345";
+    ctx.beginPath();
+    ctx.moveTo(-17, 20); ctx.quadraticCurveTo(-24, -10, -2, -24); ctx.quadraticCurveTo(22, -8, 18, 18); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = spec.color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-10, 1); ctx.quadraticCurveTo(-4, -18, 0, -25);
+    ctx.moveTo(10, 2); ctx.quadraticCurveTo(4, -19, 0, -26);
     ctx.stroke();
     if (unit.type === "tidewood") {
-      ctx.fillStyle = "rgba(137,240,255,.85)";
-      ctx.beginPath(); ctx.arc(0, -5, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(140, 240, 255, 0.8)";
+      ctx.beginPath(); ctx.arc(0, -10, 11, 0, Math.PI * 2); ctx.fill();
     }
-  } else if (unit.type === "well") {
-    ctx.fillStyle = "#2b685f";
-    ctx.beginPath();
-    ctx.ellipse(0, 10, 31, 22, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = spec.color;
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.ellipse(0, 4, 25, 15, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(134,239,255,.8)";
-    ctx.beginPath();
-    ctx.ellipse(0, 4, 19, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (unit.type === "ember" || unit.type === "firewind") {
-    ctx.fillStyle = unit.type === "firewind" ? "#8c3948" : "#6d4a35";
-    roundedRect(-22, -5, 44, 37, 13); ctx.fill();
-    ctx.fillStyle = spec.color;
-    ctx.beginPath();
-    ctx.moveTo(-25, -5); ctx.lineTo(-13, -32); ctx.lineTo(0, -9);
-    ctx.lineTo(13, -35); ctx.lineTo(26, -4); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "#3b2924";
-    ctx.beginPath(); ctx.arc(0, -2, 9, 0, Math.PI * 2); ctx.fill();
-  } else if (unit.type === "breeze") {
-    ctx.strokeStyle = "#4e9caf"; ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.moveTo(0, 30); ctx.lineTo(0, -12); ctx.stroke();
-    ctx.strokeStyle = spec.color; ctx.lineWidth = 5;
-    for (let i = 0; i < 3; i++) {
-      ctx.beginPath(); ctx.arc(0, -13, 12 + i * 8, -.9, .9); ctx.stroke();
-    }
-  } else if (unit.type === "coil" || unit.type === "storm") {
-    ctx.strokeStyle = "#43734c"; ctx.lineWidth = 7;
-    ctx.beginPath(); ctx.moveTo(0, 30); ctx.lineTo(0, -8); ctx.stroke();
-    ctx.strokeStyle = spec.color; ctx.lineWidth = unit.type === "storm" ? 6 : 4;
-    ctx.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const a = i / 10 * Math.PI * 2;
-      const r = i % 2 ? 15 : 29;
-      const x = Math.cos(a) * r;
-      const y = -13 + Math.sin(a) * r;
-      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    }
-    ctx.closePath(); ctx.stroke();
-  } else if (unit.type === "mend") {
-    ctx.fillStyle = "#477b48";
-    ctx.beginPath(); ctx.ellipse(0, 10, 30, 22, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = spec.color;
-    ctx.fillRect(-6, -23, 12, 44); ctx.fillRect(-22, -7, 44, 12);
-  } else if (unit.type === "tempo") {
-    ctx.strokeStyle = "#6f8149"; ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.moveTo(0, 30); ctx.lineTo(0, -25); ctx.stroke();
-    ctx.fillStyle = spec.color;
-    ctx.beginPath(); ctx.arc(11, -25, 11, 0, Math.PI * 2); ctx.fill();
-    ctx.fillRect(-2, -30, 14, 7);
   } else {
-    ctx.strokeStyle = "#39754d";
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.moveTo(0, 28); ctx.quadraticCurveTo(-3, 2, 0, -9);
-    ctx.stroke();
-    ctx.fillStyle = "#4d925d";
-    ctx.beginPath();
-    ctx.ellipse(-15, 17, 16, 8, -.45, 0, Math.PI * 2);
-    ctx.ellipse(15, 18, 16, 8, .45, 0, Math.PI * 2);
-    ctx.fill();
-    const petals = 5;
+    drawLeaf(-14, 6, 18, 22, "rgba(76, 188, 120, 0.8)", -0.9);
+    drawLeaf(14, 7, 18, 22, "rgba(76, 188, 120, 0.8)", 0.9);
+    drawLeaf(-6, -14, 16, 18, spec.color, -0.6);
+    drawLeaf(6, -14, 16, 18, spec.color, 0.6);
     ctx.fillStyle = spec.color;
-    for (let i = 0; i < petals; i++) {
-      const a = i / petals * Math.PI * 2;
-      ctx.beginPath();
-      ctx.ellipse(Math.cos(a) * 19, -16 + Math.sin(a) * 19, 10, 16, a, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = "#ffe06a";
-    ctx.beginPath();
-    ctx.arc(0, -16, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#173126";
-    ctx.beginPath(); ctx.arc(-4, -18, 2, 0, 7); ctx.arc(4, -18, 2, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -18, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffffdf";
+    ctx.beginPath(); ctx.arc(-3, -20, 2.5, 0, Math.PI * 2); ctx.arc(4, -20, 2.5, 0, Math.PI * 2); ctx.fill();
   }
 
   const ratio = Math.max(0, unit.hp / unit.maxHp);
   ctx.fillStyle = "rgba(9,20,16,.72)";
-  roundedRect(-28, 38, 56, 5, 3); ctx.fill();
+  roundedRect(-30, 34, 60, 5, 3); ctx.fill();
   ctx.fillStyle = ratio > .35 ? "#8ff0a6" : "#ff826e";
-  roundedRect(-28, 38, 56 * ratio, 5, 3); ctx.fill();
+  roundedRect(-30, 34, 60 * ratio, 5, 3); ctx.fill();
   ctx.restore();
 }
 
@@ -950,6 +1076,13 @@ function drawEnemy(enemy) {
     ctx.strokeStyle = "rgba(209,164,255,.65)";
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(0, 0, spec.size + 7, 0, Math.PI * 2); ctx.stroke();
+  }
+  if (enemy.energized) {
+    ctx.strokeStyle = "rgba(182,255,137,.9)";
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(0, 0, spec.size + 15 + Math.sin(state.elapsed * 6) * 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "rgba(182,255,137,.4)";
+    ctx.beginPath(); ctx.arc(0, 0, spec.size + 5, 0, Math.PI * 2); ctx.fill();
   }
   ctx.fillStyle = "rgba(4,15,13,.3)";
   ctx.beginPath(); ctx.ellipse(0, spec.size, spec.size, 8, 0, 0, 7); ctx.fill();
@@ -1024,6 +1157,23 @@ function drawDrop(drop) {
   const bob = Math.sin(drop.bob) * 5;
   ctx.save();
   ctx.translate(drop.x, drop.y + bob);
+  if (drop.kind === "food") {
+    ctx.shadowColor = "#aef77a";
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = "#9be37a";
+    ctx.beginPath();
+    ctx.moveTo(0, -16);
+    ctx.quadraticCurveTo(14, -6, 10, 10);
+    ctx.quadraticCurveTo(0, 18, -10, 10);
+    ctx.quadraticCurveTo(-14, -6, 0, -16);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.8)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, 12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, -4); ctx.lineTo(8, -4); ctx.stroke();
+    ctx.restore();
+    return;
+  }
   ctx.shadowColor = "#76ecff";
   ctx.shadowBlur = 18;
   ctx.fillStyle = "rgba(119,230,255,.88)";
@@ -1053,6 +1203,16 @@ function drawEffect(effect) {
     ctx.beginPath(); ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = `rgba(255,222,105,${alpha})`; ctx.lineWidth = 8;
     ctx.beginPath(); ctx.arc(effect.x, effect.y, effect.radius * .78, 0, Math.PI * 2); ctx.stroke();
+  } else if (effect.type === "food") {
+    const gradient = ctx.createRadialGradient(effect.x, effect.y, 0, effect.x, effect.y, Math.max(1, effect.radius));
+    gradient.addColorStop(0, `rgba(179,255,150,${alpha})`);
+    gradient.addColorStop(.35, `rgba(125,219,101,${alpha * .82})`);
+    gradient.addColorStop(1, "rgba(92,181,72,0)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath(); ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `rgba(209,255,164,${alpha})`;
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.arc(effect.x, effect.y, effect.radius * .82, 0, Math.PI * 2); ctx.stroke();
   } else {
     ctx.fillStyle = `rgba(167,224,255,${alpha * .32})`;
     ctx.fillRect(BOARD.x, BOARD.y, BOARD.w, BOARD.h);

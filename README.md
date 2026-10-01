@@ -21,11 +21,12 @@ Then visit <http://localhost:8000>.
 - Sunburst Corm and Hush Cap are instant-use guardians: place them to trigger a blast or garden-wide chill, after which they disappear and begin a longer recharge.
 - Mend Moss heals adjacent guardians, while Tempo Reed accelerates adjacent guardians' abilities.
 - Hedge Vaulters leap over the first guardian they meet, Rage Scribes become faster and stronger when their parchment shield breaks, and Gloom Heralds empower nearby enemies.
+- Energized enemies occasionally burst with a gold-green pulse and drop plant food. Collect it to trigger a one-time super-growth burst that empowers every guardian in the garden.
 - Use **1×/2× Speed** to change the simulation speed without changing balance.
 - Fuse compatible guardians by selecting one and placing it onto an occupied plot. Try Glow Sprig + Thorn Coil, Dew Well + Bark Bastion, and Ember Pod + Breeze Bell.
 - Read enemy armor colors: orange resists blast damage but is weak to slow, purple resists slow but is weak to blasts, and cyan resists pushback but is weak to direct green sparks.
 - The final Moon Surge includes a colossal Orchard Breaker that throws enemies into plots near the moon gate.
-- Click glowing dew drops to collect resources.
+- Click glowing dew drops to collect resources, and grab green plant food drops when energized enemies fall.
 - Use **Uproot** and click a placed guardian to remove it.
 - Keyboard: `1`–`9` and `0` select guardians, arrow keys move the plot cursor, `Enter` places, `R` toggles uproot mode, `Space` collects nearby dew, and `P` pauses.
 
