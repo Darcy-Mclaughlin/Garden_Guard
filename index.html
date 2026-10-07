@@ -18,6 +18,8 @@
         <div class="status-pill"><span aria-hidden="true">💧</span><strong id="resourceCount">150</strong><small>dew</small></div>
         <div class="status-pill"><span aria-hidden="true">🌙</span><strong id="waveCount">0 / 10</strong><small>wave</small></div>
         <div class="status-pill"><span aria-hidden="true">🛡️</span><strong id="gateHealth">4</strong><small>gate</small></div>
+        <div class="status-pill"><span aria-hidden="true">🍃</span><strong id="plantFoodCount">0</strong><small>food</small></div>
+        <div class="status-pill"><span aria-hidden="true">🌀</span><strong id="modifierLabel">None</strong><small>weather</small></div>
       </div>
     </header>
 
@@ -29,11 +31,24 @@
           <button id="removeButton" class="tool-button" type="button" aria-pressed="false" title="Remove a guardian (R)">
             <span aria-hidden="true">✂</span> Uproot
           </button>
+          <button id="plantFoodButton" class="tool-button" type="button" aria-pressed="false" title="Arm plant food and place on selected guardian (F)">
+            <span aria-hidden="true">🍃</span> Plant food
+          </button>
           <button id="startButton" class="primary-button" type="button">Start watch</button>
           <button id="pauseButton" class="tool-button" type="button" disabled>Pause</button>
           <button id="speedButton" class="tool-button" type="button" aria-pressed="false" title="Toggle game speed">Speed 1×</button>
           <button id="restartButton" class="tool-button" type="button">New garden</button>
+          <button id="settingsButton" class="tool-button" type="button" aria-expanded="false">Settings</button>
         </div>
+      </div>
+      <div id="settingsPanel" class="settings-panel hidden" aria-label="Game settings">
+        <label><input type="checkbox" id="settingSfx" checked> Sound effects</label>
+        <label><input type="checkbox" id="settingMusic" checked> Music/ambient</label>
+        <label><input type="checkbox" id="settingReducedMotion"> Reduced motion</label>
+        <label><input type="checkbox" id="settingScreenShake" checked> Screen shake</label>
+        <label><input type="checkbox" id="settingHighContrast"> High contrast</label>
+        <label><input type="checkbox" id="settingColorblind" checked> Colorblind indicators</label>
+        <button id="resetProgressButton" class="tool-button" type="button">Reset progression</button>
       </div>
       <div class="enemy-guide" aria-label="Enemy resistance guide">
         <span><i class="resist-dot blast"></i><strong>Cinder Shell:</strong> resists orange blasts, weak to purple slow</span>
@@ -44,7 +59,7 @@
 
     <section class="board-wrap">
       <canvas id="gameCanvas" width="1080" height="620" tabindex="0"
-        aria-label="Garden battlefield, five lanes by nine plots. Use arrow keys to choose a plot, number keys 1 through 9 and 0 to select a guardian, Enter to place, R to uproot, and Space to collect nearby dew."></canvas>
+        aria-label="Garden battlefield, five lanes by nine plots. Use arrow keys to choose a plot, number keys 1 through 9 and 0 to select a guardian, F to arm plant food, Enter to place or use it, R to uproot, and Space to collect nearby dew."></canvas>
       <div id="messagePanel" class="message-panel">
         <div class="message-card">
           <p class="eyebrow">The dusk is quiet… for now</p>
@@ -58,8 +73,8 @@
     </section>
 
     <footer class="help-bar">
-      <p><strong>Fusion:</strong> place a compatible guardian onto an occupied plot</p>
-      <p><strong>Keyboard:</strong> <kbd>1</kbd>–<kbd>9</kbd>/<kbd>0</kbd> choose · arrows move · <kbd>Enter</kbd> place · <kbd>R</kbd> uproot · <kbd>P</kbd> pause</p>
+      <p><strong>Fusion:</strong> place a compatible guardian onto an occupied plot (limited to your two chosen fusion slots)</p>
+      <p><strong>Keyboard:</strong> <kbd>1</kbd>–<kbd>9</kbd>/<kbd>0</kbd> choose · arrows move · <kbd>Enter</kbd> place/use food · <kbd>F</kbd> arm plant food · <kbd>R</kbd> uproot · <kbd>P</kbd> pause</p>
       <form id="debugForm" class="debug-tools" autocomplete="off">
         <label for="debugInput">Test code</label>
         <input id="debugInput" type="text" maxlength="40" placeholder="Enter code or command">
@@ -68,6 +83,7 @@
       </form>
     </footer>
   </main>
+  <script src="systems.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
