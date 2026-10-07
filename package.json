@@ -1,0 +1,9 @@
+{
+  "name": "garden-guard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Garden Guard lightweight tests",
+  "scripts": {
+    "test": "node --test"
+  }
+}
